@@ -3,10 +3,10 @@
 
 $(function() {
 
-	if (window.location.pathname.replace('/piano', '') == '') {
-		window.location = window.location.href = "/piano/lobby";
+	if (window.location.pathname == '/') {
+		window.location = window.location.href = "/lobby";
 		return;
-	} else if (window.location.pathname.replace('/piano/', '') == '') {
+	} else if (window.location.pathname == '') {
 		window.location = window.location.href = "lobby";
 		return;
 	}
@@ -34,18 +34,12 @@ $(function() {
 		|| window.webkitRequestAnimationFrame || window.msRequestAnimationFrame
 		|| function (cb) { setTimeout(cb, 1000 / 30); };
 
-
-
-
-
-
-
-	var gSoundPath = "/piano/audio/default/";
+	var gSoundPath = "/audio/default/";
 	var gSoundExt = ".wav.mp3";
 	
 	// Yoshify.
 	if ((window.location.hash && window.location.hash.match(/^(?:#.+)*#Piano_Great_and_Soft(?:#.+)*$/i))) {		
-		gSoundPath = "/piano/audio/greatandsoft/";		
+		gSoundPath = "/audio/greatandsoft/";		
 		gSoundExt = ".mp3";		
 	}
 
@@ -1064,6 +1058,7 @@ Rect.prototype.contains = function(x, y) {
 	
 	var gPiano = new Piano(document.getElementById("piano"));
 	
+
 
 
 
