@@ -3,13 +3,14 @@
 
 $(function() {
 
-	if (window.location.pathname == '/') {
+	// Remove redirection to lobby
+	/*if (window.location.pathname == '/') {
 		window.location = window.location.href = "/lobby";
 		return;
 	} else if (window.location.pathname == '') {
 		window.location = window.location.href = "lobby";
 		return;
-	}
+	}*/
 
 	var test_mode = (window.location.hash && window.location.hash.match(/^(?:#.+)*#test(?:#.+)*$/i));
 
@@ -1123,11 +1124,12 @@ Rect.prototype.contains = function(x, y) {
 
 
 
+
 // internet science
 
 ////////////////////////////////////////////////////////////////
 
-	var channel_id = decodeURIComponent(window.location.pathname.replace('/piano', ''));
+	var channel_id = window.location.pathname === "/" ? "" : decodeURIComponent(window.location.pathname);
 	if(channel_id.substr(0, 1) == "/") channel_id = channel_id.substr(1);
 	if(channel_id == "") channel_id = "lobby";
 
@@ -2549,7 +2551,6 @@ Rect.prototype.contains = function(x, y) {
 								}
 							}
 						}
-						showConnections(false);
 					}
 
 					midi.addEventListener("statechange", function(evt) {
@@ -2711,7 +2712,6 @@ Rect.prototype.contains = function(x, y) {
 		var img = new Image();
 		img.src = enc;
 	};
-
 
 
 
