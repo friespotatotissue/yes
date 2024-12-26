@@ -1060,7 +1060,7 @@ Rect.prototype.contains = function(x, y) {
 	
 	var gPiano = new Piano(document.getElementById("piano"));
 	
-
+	
 
 
 

@@ -135,26 +135,15 @@ MPPClient.prototype.startNote = function(note, vel) {
     
     var msg = {
         n: note,
-        v: vel
+        v: vel,
+        room: this.channel._id
     };
-
-    if(this.noteBufferTime && Date.now() - this.noteBufferTime > 1000) {
-        this.noteBufferTime = 0;
-        this.noteBuffer = [];
-    }
-
-    if(!this.noteBufferTime) {
-        this.noteBufferTime = Date.now();
-        this.noteBuffer.push(msg);
-    } else {
-        msg.d = Date.now() - this.noteBufferTime;
-        this.noteBuffer.push(msg);
-    }
 
     // Send note immediately
     this.socket.emit('n', {
-        t: this.noteBufferTime,
-        n: [msg]
+        t: Date.now(),
+        n: [msg],
+        room: this.channel._id
     });
 };
 
@@ -163,26 +152,15 @@ MPPClient.prototype.stopNote = function(note) {
     
     var msg = {
         n: note,
-        s: 1
+        s: 1,
+        room: this.channel._id
     };
-
-    if(this.noteBufferTime && Date.now() - this.noteBufferTime > 1000) {
-        this.noteBufferTime = 0;
-        this.noteBuffer = [];
-    }
-
-    if(!this.noteBufferTime) {
-        this.noteBufferTime = Date.now();
-        this.noteBuffer.push(msg);
-    } else {
-        msg.d = Date.now() - this.noteBufferTime;
-        this.noteBuffer.push(msg);
-    }
 
     // Send note immediately
     this.socket.emit('n', {
-        t: this.noteBufferTime,
-        n: [msg]
+        t: Date.now(),
+        n: [msg],
+        room: this.channel._id
     });
 };
 
