@@ -176,7 +176,33 @@ class Server {
   }
 
   removeTextHell(text) {
-    return text.replace(/[^\w\s`1234567890\-=~!@#$%^&*()_+,.\/<>?\[\]\\\{}|;':"]/g, '');
+    if (!text) return '';
+    return text.toString().replace(/[^\w\s`1234567890\-=~!@#$%^&*()_+,.\/<>?\[\]\\\{}|;':"]/g, '');
+  }
+
+  newParticipant(socket) {
+    const p = new Participant(socket.id, 'Anonymous',
+      `#${Math.floor(Math.random() * 16777215).toString(16)}`);
+    this.participants.set(socket.id, p);
+    return p;
+  }
+
+  getParticipant(socket) {
+    return this.participants.get(socket.id);
+  }
+
+  newRoom(data, p) {
+    const room = new Room(p, this, data._id, 0, data.set || {
+      visible: true,
+      chat: true,
+      crownsolo: false
+    });
+    this.rooms.set(room._id, room);
+    return room;
+  }
+
+  getRoom(id) {
+    return this.rooms.get(id);
   }
 
   // ... rest of your existing methods (newParticipant, getParticipant, newRoom, getRoom) ...
