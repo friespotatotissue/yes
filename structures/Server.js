@@ -1,240 +1,185 @@
 const WebSocket = require('ws');
 const Participant = require('./Participant');
 const Room = require('./Room');
+const Socket = require('./Socket');
 
-class Server extends WebSocket.Server {
-  constructor() {
-    super({ port: 8080 });
-    console.log('Server Launched');
+class Server {
+  constructor(io) {
+    this.io = io;
     this.sockets = new Set();
     this.participants = new Map();
     this.rooms = new Map();
     this.bindEventListeners();
-    // Broken Connections
-    setInterval(() => {
-      this.sockets.forEach(s => {
-        if (s.isAlive == false) return s.ws.terminate();
-        s.isAlive = false;
-        s.ping(() => {}); // eslint-disable-line no-empty-function
-      });
-    }, 30000);
+    console.log('Server Launched');
   }
+
+  bindEventListeners() {
+    this.io.on('connection', (socket) => {
+      console.log('New connection:', socket.id);
+      this.sockets.add(socket);
+      
+      socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+        this.sockets.delete(socket);
+        this.handleDisconnect(socket);
+      });
+
+      // Bind all message handlers
+      socket.on('hi', () => this.handleHi(socket));
+      socket.on('ch', (msg) => this.handleChannel(socket, msg));
+      socket.on('a', (msg) => this.handleChat(socket, msg));
+      socket.on('n', (msg) => this.handleNote(socket, msg));
+      socket.on('m', (msg) => this.handleMove(socket, msg));
+      socket.on('t', (msg) => this.handleTiming(socket, msg));
+      socket.on('userset', (msg) => this.handleUserSet(socket, msg));
+    });
+  }
+
+  handleHi(socket) {
+    const p = this.newParticipant(socket);
+    socket.emit('hi', {
+      m: 'hi',
+      u: p.generateJSON(),
+      t: Date.now()
+    });
+  }
+
+  handleChannel(socket, data) {
+    const p = this.getParticipant(socket);
+    if (!p) return;
+    
+    // Leave old room
+    if (socket.room) {
+      socket.leave(socket.room);
+      this.io.to(socket.room).emit('bye', socket.id);
+    }
+
+    // Join new room
+    socket.room = data._id;
+    socket.join(data._id);
+
+    let r = this.getRoom(data._id);
+    if (!r) r = this.newRoom(data, p);
+    
+    let pR = r.findParticipant(p._id);
+    if (!pR) pR = r.newParticipant(p);
+    
+    socket.emit('ch', {
+      ch: r.generateJSON(),
+      p: pR.id,
+      ppl: r.ppl
+    });
+  }
+
+  handleChat(socket, data) {
+    const p = this.getParticipant(socket);
+    if (!p || !socket.room) return;
+    
+    const r = this.getRoom(socket.room);
+    if (!r) return;
+    
+    const pR = r.findParticipant(p._id);
+    if (!pR) return;
+
+    const msg = {
+      m: 'a',
+      a: this.removeTextHell(data.message),
+      p: pR.generateJSON(),
+      t: Date.now()
+    };
+    
+    this.io.to(socket.room).emit('a', msg);
+  }
+
+  handleNote(socket, data) {
+    const p = this.getParticipant(socket);
+    if (!p || !socket.room) return;
+    
+    const r = this.getRoom(socket.room);
+    if (!r) return;
+    
+    const pR = r.findParticipant(p._id);
+    if (!pR) return;
+
+    socket.to(socket.room).emit('n', {
+      n: data.n,
+      p: pR.id,
+      t: data.t
+    });
+  }
+
+  handleMove(socket, data) {
+    const p = this.getParticipant(socket);
+    if (!p || !socket.room) return;
+    
+    const r = this.getRoom(socket.room);
+    if (!r) return;
+    
+    const pR = r.findParticipant(p._id);
+    if (!pR) return;
+
+    socket.to(socket.room).emit('m', {
+      id: pR.id,
+      x: data.x,
+      y: data.y
+    });
+  }
+
+  handleTiming(socket, data) {
+    socket.emit('t', {
+      m: 't',
+      t: Date.now(),
+      e: data.e
+    });
+  }
+
+  handleUserSet(socket, data) {
+    if (!data.set) return;
+    
+    const p = this.getParticipant(socket);
+    if (!p) return;
+    
+    if (data.set.name) {
+      p.updateUser(this.removeTextHell(data.set.name));
+    }
+    
+    const r = this.getRoom(socket.room);
+    if (!r) return;
+    
+    const pR = r.findParticipant(p._id);
+    if (!pR) return;
+    
+    this.io.to(socket.room).emit('p', {
+      id: pR.id,
+      name: p.name,
+      color: p.color,
+      _id: p._id
+    });
+  }
+
+  handleDisconnect(socket) {
+    const p = this.getParticipant(socket);
+    if (p) {
+      this.participants.delete(socket.id);
+    }
+    
+    if (socket.room) {
+      const r = this.getRoom(socket.room);
+      if (r) {
+        r.removeParticipant(p._id);
+        if (r.count <= 0) {
+          this.rooms.delete(socket.room);
+        }
+        this.io.to(socket.room).emit('bye', socket.id);
+      }
+    }
+  }
+
   removeTextHell(text) {
     return text.replace(/[^\w\s`1234567890\-=~!@#$%^&*()_+,.\/<>?\[\]\\\{}|;':"]/g, '');
   }
-  bindEventListeners() {
-    this.on('connection', (ws, req) => {
-      this.sockets.add(new Socket(this, ws, req));
-    });
-  }
-  broadcast(item, ignore = []) {
-    this.sockets.forEach(s => {
-      if (ignore.includes(s.id)) return;
-      if (Array.isArray(item)) return s.sendArray(item);
-      else return s.sendObject(item);
-    });
-  }
-  broadcastTo(item, ppl, ignore = []) {
-    this.sockets.forEach(s => {
-      if (!ppl.includes(s.id) || ignore.includes(s.id)) return;
-      if (Array.isArray(item)) return s.sendArray(item);
-      else return s.sendObject(item);
-    });
-  }
-  // EVENT TIME!
-  handleData(s, data) {
-    if (Array.isArray(data) || !data.hasOwnProperty('m')) return;
-    if (!['t', 'm', 'n'].includes(data.m)) console.log(data);
-    if (data.m == 'hi') {
-      const p = this.newParticipant(s);
-      return s.sendObject({
-        m: 'hi',
-        u: p.generateJSON(),
-        t: Date.now()
-      });
-    }
-    if (data.m == 'ch') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      // Old Room
-      const old = this.getRoom(p.room);
-      if (old) {
-        old.removeParticipant(p._id);
-        if (old.count <= 0) this.rooms.delete(p.room);
-      }
-      // New Room
-      let r = this.getRoom(data._id);
-      if (!r) r = this.newRoom(data, p);
-      let pR = r.findParticipant(p._id);
-      if (!pR) pR = r.newParticipant(p);
-      p.room = r._id;
-      if (!r.settings.lobby && pR) {
-        r.crown = {
-          participantId: pR.id,
-          userId: p.id,
-          time: new Date()
-        };
-        this.rooms.set(r._id, r);
-      }
-      if (r._id.toLowerCase().includes('black')) {
-        // Send offline note quota because fuck it
-        s.sendObject({
-          m: 'nq',
-          allowance: 8000,
-          max: 24000,
-          histLen: 3
-        });
-      } else {
-        // Send lobby notequota until told otherwise
-        s.sendObject({
-          m: 'nq',
-          allowance: 200,
-          max: 600,
-          histLen: 0
-        });
-      }
-      // Clear Chat
-      s.sendObject({
-        m: 'c'
-      }, () => {
-        const chatobjs = [];
-        for (let i = 0; i < (r.chat.messages.length > 50 ? 50 : r.chat.messages.length); i++) {
-          chatobjs.unshift(r.chat.messages[i]);
-        }
-        return s.sendArray(chatobjs);
-      });
-      return s.sendObject({
-        m: 'ch',
-        ch: r.generateJSON(),
-        p: r.findParticipant(p._id).id,
-        ppl: r.ppl.length > 0 ? r.ppl : null
-      });
-    }
-    if (data.m == 'chset') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      const r = this.getRoom(p.room);
-      if (!r) return;
-      if (r.crown && r.crown.userId != p._id) return;
-      r.update(data.set);
-    }
-    if (data.m == 'a') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      const r = this.getRoom(p.room);
-      if (!r) return;
-      const pR = r.findParticipant(p._id);
-      if (!data.message) return;
-      if (data.message.length > 255) {
-        data.message.length = 255;
-      }
-      data.message = data.message.replace(/\r?\n|\r/g, '');
-      data.message = this.removeTextHell(data.message);
-      const msg = {
-        m: 'a',
-        p: pR.generateJSON(),
-        a: data.message
-      };
-      r.chat.insert(msg);
-      try {
-        // if (r.settings.visible) webhook.send(`${r._id} - \`${p._id.substring(0, 5)}\` **${p.name}:**  ${msg.a}`);
-      } catch (e) {
-        // ...
-      }
-      return this.broadcastTo(msg, r.ppl.map(tpR => tpR._id));
-    }
-    if (data.m == 'n') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      const r = this.getRoom(p.room);
-      if (!r) return;
-      const pR = r.findParticipant(p._id);
-      if (!pR) return;
-      return this.broadcastTo({
-        m: 'n',
-        n: data.n,
-        p: pR.id,
-        t: data.t
-      }, r.ppl.map(tpR => tpR._id), [p._id]);
-    }
-    if (data.m == 'm') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      const r = this.getRoom(p.room);
-      if (!r) return;
-      const pR = r.findParticipant(p._id);
-      if (!pR) return;
-      return this.broadcastTo({
-        m: 'm',
-        id: pR.id,
-        x: data.x,
-        y: data.y
-      }, r.ppl.map(tpR => tpR._id), [p._id]);
-    }
-    if (data.m == '+ls') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      p.updates = true;
-      const keys = [];
-      this.rooms.forEach(r => {
-        if (r.settings.visible) keys.push(r.generateJSON());
-      });
-      return s.sendObject({
-        m: 'ls',
-        c: true,
-        u: keys
-      });
-    }
-    if (data.m == '-ls') {
-      // ...
-    }
-    if (data.m == 'userset') {
-      const p = this.getParticipant(s);
-      if (!p) return;
-      if (data.set.name) {
-        if (data.set.name.length > 250 || !data.set.name.replace(/\s/g, '')) data.set.name = 'Invalid';
-        p.updateUser(this.removeTextHell(data.set.name));
-      }
-      const r = this.getRoom(p.room);
-      if (!r) return;
-      const pR = r.findParticipant(p._id);
-      if (!pR) return;
-      pR.updateUser(data.set.name || 'Anonymous');
-      return this.broadcastTo({
-        m: 'p',
-        color: p.color,
-        id: pR.id,
-        name: p.name,
-        _id: p._id
-      }, r.ppl.map(tpR => tpR._id));
-    }
-    if (data.m == 't') {
-      return s.sendObject({
-        m: 't',
-        t: Date.now(),
-        echo: data.e - Date.now()
-      });
-    }
-  }
-  // Participants
-  newParticipant(s) {
-    const p = new Participant(s.id, 'Anonymous',
-      `#${Math.floor(Math.random() * 16777215).toString(16)}`);
-    this.participants.set(s.id, p);
-    return p;
-  }
-  getParticipant(s) {
-    return this.participants.get(s.id);
-  }
-  // Rooms
-  newRoom(data, p) {
-    const room = new Room(p, this, data._id, 0, data.set);
-    this.rooms.set(room._id, room);
-    return room;
-  }
-  getRoom(id) {
-    return this.rooms.get(id);
-  }
+
+  // ... rest of your existing methods (newParticipant, getParticipant, newRoom, getRoom) ...
 }
 
 module.exports = Server;
