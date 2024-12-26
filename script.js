@@ -18,6 +18,38 @@ $(function() {
 
 	var gMidiOutTest = (window.location.hash && window.location.hash.match(/^(?:#.+)*#midiout(?:#.+)*$/i)); // todo this is no longer needed
 
+	// Note quota implementation
+	var gNoteQuota = {
+		allowance: 100,
+		max: 100,
+		maxHistLen: 3,
+		history: [],
+		resetTimeout: null,
+		
+		// Check if we can play a note
+		spend: function(amt) {
+			if(!amt) amt = 1;
+			var sum = 0;
+			for(var i = 0; i < this.history.length; i++) {
+				sum += this.history[i];
+			}
+			if(sum + amt <= this.allowance) {
+				this.history.push(amt);
+				while(this.history.length > this.maxHistLen) {
+					this.history.shift();
+				}
+				return true;
+			}
+			return false;
+		},
+		
+		// Reset quota
+		reset: function() {
+			this.history = [];
+			this.allowance = this.max;
+		}
+	};
+
 	if (!Array.prototype.indexOf) {
 		Array.prototype.indexOf = function(elt /*, from*/) {
 			var len = this.length >>> 0;
@@ -75,7 +107,6 @@ $(function() {
 		gSoundExt = ".wav";
 	}
 
-	
 
 
 
@@ -249,7 +280,7 @@ Rect.prototype.contains = function(x, y) {
 				"fr": "Visible (ouvert à tous)",
 				"ja": "目に見える（誰にでも開いている）",
 				"de": "Sichtbar (offen für alle)",
-				"zh": "可见（向所��人开放）",
+				"zh": "可见（向所有人开放）",
 				"nl": "Zichtbaar (open voor iedereen)",
 				"pl": "Widoczne (otwarte dla wszystkich)",
 				"hu": "Látható (nyitott mindenki számára)"
@@ -1059,7 +1090,6 @@ Rect.prototype.contains = function(x, y) {
 	};
 	
 	var gPiano = new Piano(document.getElementById("piano"));
-	
 	
 
 
