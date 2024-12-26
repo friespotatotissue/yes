@@ -37,10 +37,12 @@ class Server {
 
   handleHi(socket) {
     const p = this.newParticipant(socket);
+    socket.participant = p;  // Store participant reference
     socket.emit('hi', {
       m: 'hi',
       u: p.generateJSON(),
-      t: Date.now()
+      t: Date.now(),
+      status: "Online"  // Add status
     });
   }
 
@@ -50,8 +52,12 @@ class Server {
     
     // Leave old room
     if (socket.room) {
+      const oldRoom = this.getRoom(socket.room);
+      if (oldRoom) {
+        oldRoom.removeParticipant(p._id);
+        this.io.to(socket.room).emit('bye', p._id);
+      }
       socket.leave(socket.room);
-      this.io.to(socket.room).emit('bye', socket.id);
     }
 
     // Join new room
@@ -59,16 +65,27 @@ class Server {
     socket.join(data._id);
 
     let r = this.getRoom(data._id);
-    if (!r) r = this.newRoom(data, p);
+    if (!r) {
+      r = this.newRoom(data, p);
+    }
     
     let pR = r.findParticipant(p._id);
-    if (!pR) pR = r.newParticipant(p);
+    if (!pR) {
+      pR = r.newParticipant(p);
+    }
     
+    // Emit room info to all participants
+    this.io.to(socket.room).emit('p', pR.generateJSON());
+    
+    // Send current room state to new participant
     socket.emit('ch', {
       ch: r.generateJSON(),
       p: pR.id,
-      ppl: r.ppl
+      ppl: r.getAllParticipants()
     });
+
+    // Update participant count
+    this.io.to(socket.room).emit('count', r.getParticipantCount());
   }
 
   handleChat(socket, data) {
@@ -203,6 +220,20 @@ class Server {
 
   getRoom(id) {
     return this.rooms.get(id);
+  }
+
+  // Helper method to get all participants in a room
+  getAllParticipants() {
+    const participants = [];
+    this.participants.forEach(p => {
+      participants.push(p.generateJSON());
+    });
+    return participants;
+  }
+
+  // Helper method to get participant count
+  getParticipantCount() {
+    return this.participants.size;
   }
 
   // ... rest of your existing methods (newParticipant, getParticipant, newRoom, getRoom) ...
