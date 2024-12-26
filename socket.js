@@ -13,12 +13,24 @@ var MPPClient = function() {
     
     // Initialize socket with correct configuration
     this.socket = io(window.location.origin, {
-        transports: ['websocket'],
-        upgrade: false,
+        transports: ['websocket', 'polling'],
+        upgrade: true,
         forceNew: true,
         reconnection: true,
         reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
         timeout: 30000
+    });
+
+    // Add connection error handling
+    this.socket.on('connect_error', function(error) {
+        console.error('Connection error:', error);
+        self.emit('connect_error', error);
+    });
+
+    this.socket.on('connect_timeout', function(timeout) {
+        console.error('Connection timeout:', timeout);
+        self.emit('connect_timeout', timeout);
     });
 
     this.bindEventListeners();
