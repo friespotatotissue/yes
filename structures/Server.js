@@ -1,15 +1,10 @@
-const CLI = require('./CLI.js');
-const Participant = require('./Participant.js');
-const Room = require('./Room.js');
-const Socket = require('./Socket.js');
-// const { WebhookClient } = require('discord.js');
 const WebSocket = require('ws');
-// const webhook = new WebhookClient('418653029546328064', 'EhMWO3en6RjzRbGL-RkZfPfaFYxaN0XEumi7eRJKqZ60pDIDk1WzoKdxD6Xolkd25hOw', { disableEveryone: true });
+const Participant = require('./Participant');
+const Room = require('./Room');
 
 class Server extends WebSocket.Server {
   constructor() {
     super({ port: 8080 });
-    this.cli = new CLI(this);
     console.log('Server Launched');
     this.sockets = new Set();
     this.participants = new Map();
