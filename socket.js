@@ -11,9 +11,14 @@ var MPPClient = function() {
     this.noteBufferTime = 0;
     this.noteFlushInterval = null;
     
-    this.socket = io(window.location.hostname + ":8080", {
+    // Initialize socket with correct configuration
+    this.socket = io(window.location.origin, {
         transports: ['websocket'],
-        upgrade: false
+        upgrade: false,
+        forceNew: true,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        timeout: 30000
     });
 
     this.bindEventListeners();
@@ -37,15 +42,6 @@ MPPClient.prototype.bindEventListeners = function() {
         // Join channel
         if(self.channel) {
             self.socket.emit('ch', {_id: self.channel._id});
-        }
-
-        if(self.noteBufferTime && self.noteBuffer.length > 0) {
-            self.socket.emit('n', {
-                t: self.noteBufferTime,
-                n: self.noteBuffer
-            });
-            self.noteBufferTime = 0;
-            self.noteBuffer = [];
         }
 
         self.emit('connect');
@@ -85,6 +81,27 @@ MPPClient.prototype.bindEventListeners = function() {
             self.emit('participant removed', part);
         }
     });
+
+    // Handle status updates
+    this.socket.on('status', function(msg) {
+        self.emit('status', msg);
+    });
+
+    // Handle count updates
+    this.socket.on('count', function(msg) {
+        self.emit('count', msg);
+    });
+
+    // Handle chat messages
+    this.socket.on('a', function(msg) {
+        self.emit('a', msg);
+    });
+
+    // Handle errors
+    this.socket.on('error', function(err) {
+        console.error('Socket error:', err);
+        self.emit('error', err);
+    });
 };
 
 MPPClient.prototype.setChannel = function(id, settings) {
@@ -114,29 +131,59 @@ MPPClient.prototype.preventsPlaying = function() {
 };
 
 MPPClient.prototype.startNote = function(note, vel) {
+    if(!this.canConnect || !this.socket.connected) return;
+    
+    var msg = {
+        n: note,
+        v: vel
+    };
+
     if(this.noteBufferTime && Date.now() - this.noteBufferTime > 1000) {
         this.noteBufferTime = 0;
         this.noteBuffer = [];
     }
+
     if(!this.noteBufferTime) {
         this.noteBufferTime = Date.now();
-        this.noteBuffer.push({n: note, v: vel});
+        this.noteBuffer.push(msg);
     } else {
-        this.noteBuffer.push({n: note, v: vel, d: Date.now() - this.noteBufferTime});
+        msg.d = Date.now() - this.noteBufferTime;
+        this.noteBuffer.push(msg);
     }
+
+    // Send note immediately
+    this.socket.emit('n', {
+        t: this.noteBufferTime,
+        n: [msg]
+    });
 };
 
 MPPClient.prototype.stopNote = function(note) {
+    if(!this.canConnect || !this.socket.connected) return;
+    
+    var msg = {
+        n: note,
+        s: 1
+    };
+
     if(this.noteBufferTime && Date.now() - this.noteBufferTime > 1000) {
         this.noteBufferTime = 0;
         this.noteBuffer = [];
     }
+
     if(!this.noteBufferTime) {
         this.noteBufferTime = Date.now();
-        this.noteBuffer.push({n: note, s: 1});
+        this.noteBuffer.push(msg);
     } else {
-        this.noteBuffer.push({n: note, s: 1, d: Date.now() - this.noteBufferTime});
+        msg.d = Date.now() - this.noteBufferTime;
+        this.noteBuffer.push(msg);
     }
+
+    // Send note immediately
+    this.socket.emit('n', {
+        t: this.noteBufferTime,
+        n: [msg]
+    });
 };
 
 // EventEmitter implementation
